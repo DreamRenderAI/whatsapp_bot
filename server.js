@@ -10,6 +10,7 @@ const {
 const axios = require('axios');
 const mime = require('mime-types');
 const qrcode = require('qrcode-terminal');
+const Cerebras = require('@cerebras/cerebras_cloud_sdk');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -27,6 +28,11 @@ const forbiddenWords = new Set(
       .map(w => w.trim().toLowerCase())
       .filter(Boolean)
 );
+
+// Initialize Cerebras client
+const cerebras = new Cerebras({
+    apiKey: 'csk-cfcxp2xtr9f8fdhj6pd8t44pp3y84vrrm6jtnvm3hy88px8j'
+});
 
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_session');
@@ -67,16 +73,65 @@ async function startBot() {
         const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
         const jid = msg.key.remoteJid;
 
-        if (text === '/gen') {
+        if (text === '/help') {
             await sock.sendMessage(jid, {
                 text: `יצירת תמונות דרך וואצאפ
 💠 By Omer AI
 
 פקודות:
-/gen - מראה את ההודעה הזאת
+/help - מראה את ההודעה הזאת
 /gen {טקסט} - יוצר תמונה לפי הטקסט
-/gen random - יוצר תמונה רנדומלית`
+/gen random - יוצר תמונה רנדומלית
+/bixx {טקסט} - משוחח עם Bixx, עוזר ה-AI של Omer AI`
             });
+            return;
+        }
+
+        if (text.startsWith('/bixx ')) {
+            const prompt = text.slice(6).trim();
+            if (!prompt) {
+                await sock.sendMessage(jid, { text: 'אנא ספק טקסט עבור Bixx' });
+                return;
+            }
+
+            // Check for forbidden words in prompt (case-insensitive)
+            const promptWords = prompt.toLowerCase().split(/\W+/);
+            const containsForbidden = promptWords.some(word => forbiddenWords.has(word));
+
+            if (containsForbidden) {
+                await sock.sendMessage(jid, { text: 'השתמשת במילה אסורה' });
+                return;
+            }
+
+            try {
+                const stream = await cerebras.chat.completions.create({
+                    messages: [
+                        {
+                            role: 'system',
+                            content: 'You are Bixx, from the company Omer AI. Give short, friendly responses.'
+                        },
+                        {
+                            role: 'user',
+                            content: prompt
+                        }
+                    ],
+                    model: 'llama-3.3-70b',
+                    stream: true,
+                    max_completion_tokens: 2048,
+                    temperature: 0.2,
+                    top_p: 1
+                });
+
+                let responseText = '';
+                for await (const chunk of stream) {
+                    responseText += chunk.choices[0]?.delta?.content || '';
+                }
+
+                await sock.sendMessage(jid, { text: responseText || '⚠️ No response from Bixx.' });
+            } catch (err) {
+                console.error('❌ Bixx Error:', err.message);
+                await sock.sendMessage(jid, { text: '⚠️ Could not process Bixx request.' });
+            }
             return;
         }
 
@@ -86,7 +141,6 @@ async function startBot() {
         if (!prompt) return;
 
         // Check for forbidden words in prompt (case-insensitive)
-        // Splitting prompt by spaces and punctuation for word boundary detection
         const promptWords = prompt.toLowerCase().split(/\W+/);
         const containsForbidden = promptWords.some(word => forbiddenWords.has(word));
 
