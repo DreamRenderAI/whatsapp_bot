@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const {
     makeWASocket,
     useMultiFileAuthState,
@@ -18,6 +19,14 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.listen(PORT, () => {
     console.log(`🌐 Web server running at http://localhost:${PORT}`);
 });
+
+// Load forbidden words from no.txt into a Set for fast lookup
+const forbiddenWords = new Set(
+    fs.readFileSync(path.join(__dirname, 'no.txt'), 'utf-8')
+      .split(/\r?\n/)
+      .map(w => w.trim().toLowerCase())
+      .filter(Boolean)
+);
 
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_session');
@@ -55,8 +64,6 @@ async function startBot() {
         const msg = messages[0];
         if (!msg.message) return;
 
-        // Listen to own messages too (no msg.key.fromMe filter)
-
         const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
         const jid = msg.key.remoteJid;
 
@@ -76,12 +83,19 @@ async function startBot() {
         if (!text.startsWith('/gen ')) return;
 
         let prompt = text.slice(5).trim();
+        if (!prompt) return;
 
-        if (!prompt) return;  // Removed the previous "try send" message
+        // Check for forbidden words in prompt (case-insensitive)
+        const promptWords = prompt.toLowerCase().split(/\s+/);
+        const containsForbidden = promptWords.some(word => forbiddenWords.has(word));
+
+        if (containsForbidden) {
+            await sock.sendMessage(jid, { text: 'השתמשת במילה אסורה' });
+            return;
+        }
 
         // Handle random prompt
         if (prompt.toLowerCase() === 'random') {
-            // Simple random prompt list - add your own here if you want
             const randomPrompts = [
                 'sunset over mountains',
                 'futuristic cityscape',
