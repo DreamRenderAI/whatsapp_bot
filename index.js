@@ -1,14 +1,23 @@
+const express = require('express');
+const path = require('path');
 const {
     makeWASocket,
     useMultiFileAuthState,
     fetchLatestBaileysVersion,
     DisconnectReason
 } = require('@whiskeysockets/baileys');
-
 const axios = require('axios');
 const mime = require('mime-types');
-const fs = require('fs');
 const qrcode = require('qrcode-terminal');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.listen(PORT, () => {
+    console.log(`🌐 Web server running at http://localhost:${PORT}`);
+});
 
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_session');
@@ -44,28 +53,50 @@ async function startBot() {
         if (type !== 'notify') return;
 
         const msg = messages[0];
-        const jid = msg.key.remoteJid;
-        const isSelf = jid.endsWith('@s.whatsapp.net') && msg.key.fromMe; // Your own number
+        if (!msg.message) return;
 
-        if (!msg.message || (!isSelf && msg.key.fromMe)) return;
+        // Listen to own messages too (no msg.key.fromMe filter)
 
         const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-        if (!text.startsWith('/gen')) return;
+        const jid = msg.key.remoteJid;
 
-        const prompt = text.slice(5).trim();
+        if (text === '/gen') {
+            await sock.sendMessage(jid, {
+                text: `יצירת תמונות דרך וואצאפ
+💠 By Omer AI
 
-        if (prompt.length === 0) {
-            const helpText = `*יצירת תמונות דרך וואצאפ*\n💠 By Omer AI\n\n*פקודות:*\n/gen - מראה את ההודעה הזאת\n/gen {טקסט} - יוצר תמונה לפי הטקסט\n/gen רנדומלי - יוצר תמונה רנדומלית`;
-            await sock.sendMessage(jid, { text: helpText });
+פקודות:
+/gen - מראה את ההודעה הזאת
+/gen {טקסט} - יוצר תמונה לפי הטקסט
+/gen random - יוצר תמונה רנדומלית`
+            });
             return;
         }
 
-        const finalPrompt = (prompt === 'רנדומלי')
-            ? ['cat in space', 'cyberpunk elephant', 'robot eating pizza', 'desert city at dusk', 'matrix waterfall'][Math.floor(Math.random() * 5)]
-            : prompt;
+        if (!text.startsWith('/gen ')) return;
+
+        let prompt = text.slice(5).trim();
+
+        if (!prompt) return;  // Removed the previous "try send" message
+
+        // Handle random prompt
+        if (prompt.toLowerCase() === 'random') {
+            // Simple random prompt list - add your own here if you want
+            const randomPrompts = [
+                'sunset over mountains',
+                'futuristic cityscape',
+                'cute puppy playing',
+                'mystical forest',
+                'robot painting a portrait',
+                'space nebula with stars',
+                'vintage car on a road',
+                'fantasy dragon flying'
+            ];
+            prompt = randomPrompts[Math.floor(Math.random() * randomPrompts.length)];
+        }
 
         try {
-            const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?nologo=true`;
+            const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?nologo=true`;
             const res = await axios.get(imageUrl, { responseType: 'arraybuffer' });
             const buffer = Buffer.from(res.data);
             const mediaType = mime.lookup(imageUrl) || 'image/png';
@@ -73,14 +104,13 @@ async function startBot() {
             await sock.sendMessage(jid, {
                 image: buffer,
                 mimetype: mediaType,
-                caption: `הינה התמונה שלך \n *${finalPrompt}*`
+                caption: `🧠 Prompt: *${prompt}*`
             });
         } catch (err) {
             console.error('❌ Error:', err.message);
             await sock.sendMessage(jid, { text: '⚠️ Could not generate image.' });
         }
     });
-
 }
 
 startBot();
