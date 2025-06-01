@@ -20,10 +20,10 @@ app.listen(PORT, () => {
     console.log(`🌐 Web server running at http://localhost:${PORT}`);
 });
 
-// Load forbidden words from no.txt into a Set for fast lookup
+// Load forbidden words from no.txt (comma-separated line) into a Set for fast lookup
 const forbiddenWords = new Set(
     fs.readFileSync(path.join(__dirname, 'no.txt'), 'utf-8')
-      .split(/\r?\n/)
+      .split(',')
       .map(w => w.trim().toLowerCase())
       .filter(Boolean)
 );
@@ -86,7 +86,8 @@ async function startBot() {
         if (!prompt) return;
 
         // Check for forbidden words in prompt (case-insensitive)
-        const promptWords = prompt.toLowerCase().split(/\s+/);
+        // Splitting prompt by spaces and punctuation for word boundary detection
+        const promptWords = prompt.toLowerCase().split(/\W+/);
         const containsForbidden = promptWords.some(word => forbiddenWords.has(word));
 
         if (containsForbidden) {
