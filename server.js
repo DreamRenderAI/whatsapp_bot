@@ -87,10 +87,20 @@ async function startBot() {
             return;
         }
 
+        if (text === '/gen') {
+            await sock.sendMessage(jid, { text: 'ספק טקסט אחרי הפקודה' });
+            return;
+        }
+
+        if (text === '/bixx') {
+            await sock.sendMessage(jid, { text: 'ספק טקסט אחרי הפקודה' });
+            return;
+        }
+
         if (text.startsWith('/bixx ')) {
             const prompt = text.slice(6).trim();
             if (!prompt) {
-                await sock.sendMessage(jid, { text: 'אנא ספק טקסט עבור Bixx' });
+                await sock.sendMessage(jid, { text: 'ספק טקסט אחרי הפקודה' });
                 return;
             }
 
@@ -135,49 +145,58 @@ async function startBot() {
             return;
         }
 
-        if (!text.startsWith('/gen ')) return;
+        if (text.startsWith('/gen ')) {
+            let prompt = text.slice(5).trim();
+            if (!prompt) {
+                await sock.sendMessage(jid, { text: 'ספק טקסט אחרי הפקודה' });
+                return;
+            }
 
-        let prompt = text.slice(5).trim();
-        if (!prompt) return;
+            // Check for forbidden words in prompt (case-insensitive)
+            const promptWords = prompt.toLowerCase().split(/\W+/);
+            const containsForbidden = promptWords.some(word => forbiddenWords.has(word));
 
-        // Check for forbidden words in prompt (case-insensitive)
-        const promptWords = prompt.toLowerCase().split(/\W+/);
-        const containsForbidden = promptWords.some(word => forbiddenWords.has(word));
+            if (containsForbidden) {
+                await sock.sendMessage(jid, { text: 'השתמשת במילה אסורה' });
+                return;
+            }
 
-        if (containsForbidden) {
-            await sock.sendMessage(jid, { text: 'השתמשת במילה אסורה' });
+            // Handle random prompt
+            if (prompt.toLowerCase() === 'random') {
+                const randomPrompts = [
+                    'sunset over mountains',
+                    'futuristic cityscape',
+                    'cute puppy playing',
+                    'mystical forest',
+                    'robot painting a portrait',
+                    'space nebula with stars',
+                    'vintage car on a road',
+                    'fantasy dragon flying'
+                ];
+                prompt = randomPrompts[Math.floor(Math.random() * randomPrompts.length)];
+            }
+
+            await sock.sendMessage(jid, { text: `מתחיל ליצור תמונה: ${prompt}\nלוקח בדרך כלל 5-6 שניות.` });
+
+            try {
+                const seed = Math.floor(Math.random() * 1000000000) + 1;
+                const startTime = Date.now();
+                const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?nologo=true&seed=${seed}`;
+                const res = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+                const buffer = Buffer.from(res.data);
+                const mediaType = mime.lookup(imageUrl) || 'image/png';
+                const generationTime = ((Date.now() - startTime) / 1000).toFixed(2);
+
+                await sock.sendMessage(jid, {
+                    image: buffer,
+                    mimetype: mediaType,
+                    caption: `prompt: ${prompt}\nSeed: ${seed}\nGenerated in: ${generationTime} seconds`
+                });
+            } catch (err) {
+                console.error('❌ Error:', err.message);
+                await sock.sendMessage(jid, { text: '⚠️ Could not generate image.' });
+            }
             return;
-        }
-
-        // Handle random prompt
-        if (prompt.toLowerCase() === 'random') {
-            const randomPrompts = [
-                'sunset over mountains',
-                'futuristic cityscape',
-                'cute puppy playing',
-                'mystical forest',
-                'robot painting a portrait',
-                'space nebula with stars',
-                'vintage car on a road',
-                'fantasy dragon flying'
-            ];
-            prompt = randomPrompts[Math.floor(Math.random() * randomPrompts.length)];
-        }
-
-        try {
-            const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?nologo=true`;
-            const res = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-            const buffer = Buffer.from(res.data);
-            const mediaType = mime.lookup(imageUrl) || 'image/png';
-
-            await sock.sendMessage(jid, {
-                image: buffer,
-                mimetype: mediaType,
-                caption: `🧠 Prompt: *${prompt}*`
-            });
-        } catch (err) {
-            console.error('❌ Error:', err.message);
-            await sock.sendMessage(jid, { text: '⚠️ Could not generate image.' });
         }
     });
 }
